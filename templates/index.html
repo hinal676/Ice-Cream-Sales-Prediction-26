@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🍦 Ice Cream Sales Predictor</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <div class="stars"></div>
+
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>🍦 Ice Cream Sales Predictor</h1>
+        <p class="subtitle">
+          Predict daily ice cream sales using Machine Learning
+        </p>
+      </div>
+
+      <div class="main-content">
+        <!-- Prediction Form -->
+        <div class="card form-card">
+          <h2>📊 Make a Prediction</h2>
+          <form id="predictionForm" method="POST" action="/predict">
+            <div class="form-group">
+              <label for="temperature">Temperature (°F)</label>
+              <input
+                type="number"
+                id="temperature"
+                name="temperature"
+                placeholder="Enter temperature (e.g., 72)"
+                step="0.1"
+                min="-50"
+                max="150"
+                required
+              />
+              <small>Range: -50°F to 150°F</small>
+            </div>
+
+            <div class="form-group">
+              <label for="rainfall">Rainfall (inches)</label>
+              <input
+                type="number"
+                id="rainfall"
+                name="rainfall"
+                placeholder="Enter rainfall (e.g., 0.5)"
+                step="0.01"
+                min="0"
+                max="10"
+                required
+              />
+              <small>Range: 0 to 10 inches</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="day_of_week">Day of Week</label>
+                <select id="day_of_week" name="day_of_week" required>
+                  <option value="">Select a day...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="month">Month</label>
+                <select id="month" name="month" required>
+                  <option value="">Select a month...</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-predict">
+              <span>🚀 Predict Sales</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Prediction Result -->
+        <div id="resultCard" class="card result-card">
+          <h2>✨ Prediction Result</h2>
+          <div class="result-display">
+            <div class="prediction-value">
+              <span class="label">Predicted Sales</span>
+              <span class="value" id="predictionValue">--</span>
+              <span class="unit">ice creams</span>
+            </div>
+          </div>
+          <div class="result-details">
+            <div class="detail-item">
+              <span class="label">Temperature</span>
+              <span class="value" id="resultTemp">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Rainfall</span>
+              <span class="value" id="resultRain">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Day</span>
+              <span class="value" id="resultDay">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="label">Month</span>
+              <span class="value" id="resultMonth">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model Performance Section -->
+        <div class="card performance-card">
+          <h2>🤖 Model Performance</h2>
+          <div class="performance-grid">
+            <div class="performance-box">
+              <span class="perf-label">R² Score</span>
+              <span class="perf-value" id="r2Score">--</span>
+              <span class="perf-desc">Model Accuracy</span>
+            </div>
+            <div class="performance-box">
+              <span class="perf-label">Temperature Coefficient</span>
+              <span class="perf-value" id="coefTemp">--</span>
+              <span class="perf-desc">Impact on Sales</span>
+            </div>
+            <div class="performance-box">
+              <span class="perf-label">Rainfall Coefficient</span>
+              <span class="perf-value" id="coefRain">--</span>
+              <span class="perf-desc">Impact on Sales</span>
+            </div>
+            <div class="performance-box">
+              <span class="perf-label">Intercept</span>
+              <span class="perf-value" id="intercept">--</span>
+              <span class="perf-desc">Base Sales</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Statistics Section -->
+        <div class="card stats-card">
+          <h2>📈 Dataset Statistics</h2>
+          <div class="stats-grid" id="statsGrid">
+            <div class="stat-box loading">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Historical Data -->
+        <div class="card history-card">
+          <h2>🔝 Top 10 Sales Days</h2>
+          <div class="history-list" id="historyList">
+            <div class="loading">Loading historical data...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Notification -->
+    <div
+      id="errorNotification"
+      class="notification error-notification hidden"
+    ></div>
+
+    <script>
+      // Load days and months on page load
+      window.addEventListener("DOMContentLoaded", function () {
+        loadDaysAndMonths();
+        loadStatistics();
+        loadHistoricalData();
+      });
+
+      // Load available days and months
+      async function loadDaysAndMonths() {
+        try {
+          const daysRes = await fetch("/api/days");
+          const daysData = await daysRes.json();
+          populateSelect("day_of_week", daysData.days);
+
+          const monthsRes = await fetch("/api/months");
+          const monthsData = await monthsRes.json();
+          populateSelect("month", monthsData.months);
+        } catch (error) {
+          console.error("Error loading data:", error);
+        }
+      }
+
+      // Populate select elements
+      function populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        options.forEach((option) => {
+          const opt = document.createElement("option");
+          opt.value = option;
+          opt.textContent = option;
+          select.appendChild(opt);
+        });
+      }
+
+      // Load and display statistics
+      async function loadStatistics() {
+        try {
+          const res = await fetch("/api/statistics");
+          const stats = await res.json();
+
+          // Populate Model Performance Card
+          document.getElementById("r2Score").textContent = stats.model_r2;
+          document.getElementById("coefTemp").textContent =
+            stats.model_coef_temp;
+          document.getElementById("coefRain").textContent =
+            stats.model_coef_rain;
+          document.getElementById("intercept").textContent =
+            stats.model_intercept;
+
+          const statsHTML = `
+                    <div class="stat-box">
+                        <span class="stat-label">Avg Temperature</span>
+                        <span class="stat-value">${stats.avg_temperature}°F</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Max Temperature</span>
+                        <span class="stat-value">${stats.max_temperature}°F</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Min Temperature</span>
+                        <span class="stat-value">${stats.min_temperature}°F</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Avg Rainfall</span>
+                        <span class="stat-value">${stats.avg_rainfall}"</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Max Rainfall</span>
+                        <span class="stat-value">${stats.max_rainfall}"</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Avg Sales</span>
+                        <span class="stat-value">${Math.round(stats.avg_sales)}</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Max Sales</span>
+                        <span class="stat-value">${stats.max_sales}</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Min Sales</span>
+                        <span class="stat-value">${stats.min_sales}</span>
+                    </div>
+                `;
+          document.getElementById("statsGrid").innerHTML = statsHTML;
+        } catch (error) {
+          console.error("Error loading statistics:", error);
+          document.getElementById("statsGrid").innerHTML =
+            '<div class="stat-box error">Failed to load statistics</div>';
+        }
+      }
+
+      // Load historical data
+      async function loadHistoricalData() {
+        try {
+          const res = await fetch("/api/historical");
+          const data = await res.json();
+
+          const historyHTML = data.historical
+            .map(
+              (item, index) => `
+                    <div class="history-item">
+                        <div class="rank">#${index + 1}</div>
+                        <div class="history-info">
+                            <div class="history-sales">${item.IceCreamsSold} sold</div>
+                            <div class="history-details">
+                                Temp: ${item.Temperature}°F | Rain: ${item.Rainfall}" | ${item.DayOfWeek}
+                            </div>
+                        </div>
+                    </div>
+                `,
+            )
+            .join("");
+
+          document.getElementById("historyList").innerHTML = historyHTML;
+        } catch (error) {
+          console.error("Error loading historical data:", error);
+          document.getElementById("historyList").innerHTML =
+            '<div class="history-item error">Failed to load historical data</div>';
+        }
+      }
+
+      // Handle form submission
+      document
+        .getElementById("predictionForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const formData = new FormData(this);
+
+          try {
+            const res = await fetch("/predict", {
+              method: "POST",
+              body: formData,
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+              // Display result
+              document.getElementById("predictionValue").textContent =
+                data.prediction;
+              document.getElementById("resultTemp").textContent =
+                `${data.temperature}°F`;
+              document.getElementById("resultRain").textContent =
+                `${data.rainfall}"`;
+              document.getElementById("resultDay").textContent =
+                data.day_of_week;
+              document.getElementById("resultMonth").textContent = data.month;
+
+              document.getElementById("resultCard").classList.remove("hidden");
+              document
+                .getElementById("resultCard")
+                .scrollIntoView({ behavior: "smooth" });
+            } else {
+              showError(data.error || "Prediction failed");
+            }
+          } catch (error) {
+            showError("Network error: " + error.message);
+          }
+        });
+
+      // Show error notification
+      function showError(message) {
+        const notification = document.getElementById("errorNotification");
+        notification.textContent = message;
+        notification.classList.remove("hidden");
+        setTimeout(() => {
+          notification.classList.add("hidden");
+        }, 5000);
+      }
+    </script>
+  </body>
+</html>
